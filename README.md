@@ -1,3 +1,7 @@
+# gitlog → sqlite data pipeline
+
+This data pipeline pulls the latest changes from github repositories, then transforms their git log outputs into json data which is then loaded into pandas and exported to sqlite. 
+
 # Airflow Codebase Template
 
 ## Background
