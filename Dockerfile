@@ -18,7 +18,8 @@ RUN apt-get install -y --no-install-recommends \
     lsb-release \
     sasl2-bin \
     sqlite3 \
-    unixodbc
+    unixodbc \
+    git
 
 # Install Airflow and any additonal dependencies
 WORKDIR /root

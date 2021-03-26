@@ -35,6 +35,7 @@ services:
       - ./dags:/root/airflow/dags
       - ./plugins:/root/airflow/plugins
       - airflow-worker-logs:/root/airflow/logs
+      - ./repos:/root/airflow/repos
     ports:
       - "8080:8080"
     command: airflow webserver
@@ -49,6 +50,7 @@ services:
       - ./dags:/root/airflow/dags
       - ./plugins:/root/airflow/plugins
       - airflow-worker-logs:/root/airflow/logs
+      - ./repos:/root/airflow/repos
     command: airflow scheduler
 
   test:
