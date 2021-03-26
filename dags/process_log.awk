@@ -1,5 +1,5 @@
 { 
-  # run this script with the following command:
+# run this script with the following command:
 #   git log --pretty=format:']},{%n "commit": "%H",%n "abbreviated_commit": "%h",%n "name": "%aN",%n "email": "%aE",%n "date": "%at",%n"files_changed": [' --numstat --no-merges | awk -f ~/Drive/workshop/2-current/2-data\ engineering/1_git_log.awk >> ~/Desktop/almost.json
   
   # this awk script formats the files and number of lines changed from git log's --names-only and --numstat to json
