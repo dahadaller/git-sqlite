@@ -1,6 +1,7 @@
 # import json
 from pathlib import Path
 import sqlite3
+import json
 
 from airflow.models import DAG
 from airflow.operators.bash import BashOperator
@@ -135,8 +136,15 @@ def json_df_csv_callable():
     valid_json_files = json_dir.glob('*_valid.json')
 
     for valid_json in valid_json_files:
-        df = pd.read_json(valid_json)
-        df.to_csv(json_dir / (valid_json.stem + '.csv'))
+
+        with valid_json.open(mode='r') as read_json:
+            json_dict = json.load(read_json)
+
+        commits = pd.DataFrame(json_dict)[["commit","abbreviated_commit","name","email","date"]]
+        files_changed = pd.json_normalize(json_dict, record_path='files_changed', meta=['commit', 'abbreviated_commit'])
+
+        commits.to_csv(json_dir / (valid_json.stem + '_commits.csv'))
+        files_changed.to_csv(json_dir / (valid_json.stem + '_files_changed.csv'))
 
         # con = sqlite3.connect(json_dir / 'commit.db')
         # with con:
