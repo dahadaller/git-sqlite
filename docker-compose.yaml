@@ -36,7 +36,7 @@ services:
       - ./plugins:/root/airflow/plugins
       - airflow-worker-logs:/root/airflow/logs
       - ./repos:/root/airflow/repos
-      - ./json/:/root/airflow/json
+      - ./data/:/root/airflow/data
     ports:
       - "8080:8080"
     command: airflow webserver
@@ -52,7 +52,7 @@ services:
       - ./plugins:/root/airflow/plugins
       - airflow-worker-logs:/root/airflow/logs
       - ./repos:/root/airflow/repos
-      - ./json/:/root/airflow/json
+      - ./data/:/root/airflow/data
     command: airflow scheduler
 
   test:

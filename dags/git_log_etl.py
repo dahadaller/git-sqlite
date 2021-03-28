@@ -11,8 +11,7 @@ import pandas as pd
 
 def clone_log_awk_args(arg):
     repos = [
-        # 'https://github.com/spotify/luigi.git',
-        # 'https://github.com/apache/airflow.git',
+        'https://github.com/spotify/luigi.git',
         'https://github.com/scala/scala.git'
     ]
 
@@ -22,7 +21,7 @@ def clone_log_awk_args(arg):
 
     clone_log_awk_template="""
     # clear out json directory
-    cd /root/airflow/json
+    cd /root/airflow/data
     rm -rf *.json
     rm -rf *.csv
     rm -rf *.db
@@ -39,12 +38,12 @@ def clone_log_awk_args(arg):
     # pipe prettified "json" git log to file
     {% for dir in params.repo_dirs %}
     cd /root/airflow/repos/{{ dir }}
-    {{ params.git_log }} > /root/airflow/json/{{ dir }}_git_log.json
+    {{ params.git_log }} > /root/airflow/data/{{ dir }}_git_log.json
     {% endfor %}
 
     # process git log "json" with awk
     {% for dir in params.repo_dirs %}
-    cat /root/airflow/json/{{ dir }}_git_log.json | awk -f /root/airflow/dags/process_log.awk > /root/airflow/json/{{ dir }}_awk.json 
+    cat /root/airflow/data/{{ dir }}_git_log.json | awk -f /root/airflow/dags/process_log.awk > /root/airflow/data/{{ dir }}_awk.json 
     {% endfor %}
 
     """
@@ -55,9 +54,9 @@ def clone_log_awk_args(arg):
         return {'repos': repos, 'repo_dirs':repo_dirs, 'git_log':git_log}
 
 def clean_json_callable():
-    json_dir = Path('/root/airflow/json/')
-    awk_json_files = list(json_dir.glob('*_awk.json'))
-    valid_json_files = [json_dir / (a.stem[:-4] + '_valid' + a.suffix) for a in awk_json_files]
+    data_dir = Path('/root/airflow/data/')
+    awk_json_files = list(data_dir.glob('*_awk.json'))
+    valid_json_files = [data_dir / (a.stem[:-4] + '_valid' + a.suffix) for a in awk_json_files]
 
     print(list(awk_json_files),valid_json_files)
     print(list(zip(awk_json_files, valid_json_files)))
@@ -109,7 +108,7 @@ def clean_json_callable():
         with ajf.open(mode='r') as awk_json, vjf.open(mode='w') as valid_json:
 
             # correct top-level bracket on first line
-            # and add { for furst element
+            # and add { for first element
             valid_json.write('[{\n')
     
             for line_number, line in enumerate(awk_json):
@@ -131,27 +130,31 @@ def clean_json_callable():
         # with vjf.open(mode='r') as valid_json:
         #     data = json.load(valid_json)
 
-def json_df_csv_callable():
-    json_dir = Path('/root/airflow/json/')
-    valid_json_files = json_dir.glob('*_valid.json')
+def json_df_sqlite_callable():
+    data_dir = Path('/root/airflow/data/')
+    valid_json_files = data_dir.glob('*_valid.json')
 
     for valid_json in valid_json_files:
 
         with valid_json.open(mode='r') as read_json:
-            json_dict = json.load(read_json)
+            try:
+                json_dict = json.load(read_json)
+            except ValueError as error: 
+                print(str(valid_json))
+                raise error
 
         commits = pd.DataFrame(json_dict)[["commit","abbreviated_commit","name","email","date"]]
         files_changed = pd.json_normalize(json_dict, record_path='files_changed', meta=['commit', 'abbreviated_commit'])
 
-        commits.to_csv(json_dir / (valid_json.stem + '_commits.csv'))
-        files_changed.to_csv(json_dir / (valid_json.stem + '_files_changed.csv'))
+        commits.to_csv(data_dir / (valid_json.stem[:-6] + '_commits.csv'))
+        files_changed.to_csv(data_dir / (valid_json.stem[:-6] + '_files_changed.csv'))
 
-        # con = sqlite3.connect(json_dir / 'commit.db')
-        # with con:
-        #     df.to_sql(valid_json.stem[:-6], con, if_exists="replace")
+        con = sqlite3.connect(data_dir / 'commit.db')
+        with con:
+            commits.to_sql(valid_json.stem[:-6] + '_commits', con, if_exists="replace")
+            files_changed.to_sql(valid_json.stem[:-6] + '_files_changed', con, if_exists="replace")
 
 
-# TODO: what else should I put in the default args for this pipeline?
 default_args={"start_date": "2021-01-01"}
 git_log_etl = DAG('git_log_etl', default_args=default_args)
 
@@ -165,9 +168,9 @@ clean_json = PythonOperator(
     python_callable=clean_json_callable,
     dag=git_log_etl)
 
-json_df_csv = PythonOperator(
-    task_id ='json_df_csv',
-    python_callable=json_df_csv_callable,
+json_df_sqlite = PythonOperator(
+    task_id ='json_df_sqlite',
+    python_callable=json_df_sqlite_callable,
     dag=git_log_etl)
 
-clone_log_awk >> clean_json >> json_df_csv
+clone_log_awk >> clean_json >> json_df_sqlite
