@@ -6,21 +6,27 @@ import json
 from airflow.models import DAG
 from airflow.operators.bash import BashOperator
 from airflow.operators.python import PythonOperator
+from airflow.models import Variable
 
 import pandas as pd
 
-def clone_log_awk_args(arg):
-    repos = [
-        'https://github.com/spotify/luigi.git',
-        'https://github.com/scala/scala.git'
-    ]
+repo_urls = 'https://github.com/spotify/luigi.git,https://github.com/scala/scala.git'
+data_dir = '/root/airflow/data/'
+repos_dir = '/root/airflow/repos/'
 
+Variable.set("data_dir", data_dir)
+Variable.set("repos_dir", repos_dir)
+Variable.set("repo_urls", repo_urls)
+
+
+def clone_log_awk_args(arg):
+    repos = Variable.get('repo_urls').split(',')
     repo_dirs = [r.split('/')[-1][:-4] for r in repos]
 
     git_log = """git log --pretty=format:'{"commit": "%H", "abbreviated_commit": "%h", "name": "%aN","email": "%aE","date": "%at", "files_changed": []},' --numstat --no-merges"""
 
     clone_log_awk_template="""
-    # clear out json directory
+    # clear out data directory
     cd /root/airflow/data
     rm -rf *.json
     rm -rf *.csv
@@ -54,7 +60,7 @@ def clone_log_awk_args(arg):
         return {'repos': repos, 'repo_dirs':repo_dirs, 'git_log':git_log}
 
 def clean_json_callable():
-    data_dir = Path('/root/airflow/data/')
+    data_dir = Path(Variable.get('data_dir'))
     awk_json_files = list(data_dir.glob('*_awk.json'))
     valid_json_files = [data_dir / (a.stem[:-4] + '_valid' + a.suffix) for a in awk_json_files]
 
@@ -97,7 +103,7 @@ def clean_json_callable():
 
 
 def json_df_sqlite_callable():
-    data_dir = Path('/root/airflow/data/')
+    data_dir = Path(Variable.get('data_dir'))
     valid_json_files = data_dir.glob('*_valid.json')
 
     for valid_json in valid_json_files:
