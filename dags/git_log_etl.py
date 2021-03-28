@@ -17,7 +17,7 @@ def clone_log_awk_args(arg):
 
     repo_dirs = [r.split('/')[-1][:-4] for r in repos]
 
-    git_log = """git log --pretty=format:']},{%n "commit": "%H",%n "abbreviated_commit": "%h",%n "name": "%aN",%n "email": "%aE",%n "date": "%at",%n"files_changed": [' --numstat --no-merges"""
+    git_log = """git log --pretty=format:'{"commit": "%H", "abbreviated_commit": "%h", "name": "%aN","email": "%aE","date": "%at", "files_changed": []},' --numstat --no-merges"""
 
     clone_log_awk_template="""
     # clear out json directory
@@ -58,77 +58,43 @@ def clean_json_callable():
     awk_json_files = list(data_dir.glob('*_awk.json'))
     valid_json_files = [data_dir / (a.stem[:-4] + '_valid' + a.suffix) for a in awk_json_files]
 
-    print(list(awk_json_files),valid_json_files)
-    print(list(zip(awk_json_files, valid_json_files)))
-
-    # find line indices of awk_json that should be 
-    # edited before writing to valid. These just 
-    # looking for lines between square brackets [] using a stack to remove the 
-    # comma of the last element in each list.
-    # also want to remove the comma from the last line
-    for ajf in awk_json_files:
-
-        with ajf.open(mode='r') as awk_json:
-
-            comma_lines = set()
-            last_line_number = 0
-
-            stack = []
-            between_brackets = False
-            
-            for line_number, line in enumerate(awk_json):
-
-                last_line_number = line_number
-
-                if line_number == 0:
-                    pass
-
-                elif line.rfind('[')!=-1:
-                    between_brackets = True
-
-                elif line.find(']')!=-1:
-                    between_brackets = False
-
-                    if stack:
-                        line_num, line_text = stack.pop()
-                        while stack and line_text.rfind(',') == -1:
-                            line_num, line_text = stack.pop()
-
-                        comma_lines.add(line_num)
-                        stack = []
-                
-                elif between_brackets:
-                    stack.append((line_number, line))
-                    
-            comma_lines.add(last_line_number)
-
 
     for ajf, vjf in zip(awk_json_files, valid_json_files):
-        # edit and write lines to valid
+
         with ajf.open(mode='r') as awk_json, vjf.open(mode='w') as valid_json:
 
             # correct top-level bracket on first line
-            # and add { for first element
-            valid_json.write('[{\n')
-    
-            for line_number, line in enumerate(awk_json):
+            valid_json.write('[\n')
 
-                if line_number == 0:
+            begin, middle, end = '',[],''
+            count = 1
+            for line in awk_json:
+
+                if line.startswith('{"commit":'):
+                    # write out files from previous commit
+                    middle = ''.join(middle).rstrip(',')
+                    valid_json.write(begin + middle + end)
+
+                    # prepare to populate current commit with files
+                    i = line.rfind('[]')
+                    begin = line[:i+1]
+                    middle = []
+                    end = line[i+1:]
                     continue
 
-                elif line_number in comma_lines:
-                    comma_index = line.rfind(',')
-                    valid_json.write(line[:comma_index])
-                    comma_lines.remove(line_number)
-                else:
-                    valid_json.write(line)
-        
-            # correct top-level bracket on last line
-            valid_json.write(']}]')
+                if line.startswith('{"lines_added":'):
+                    # add file to current commit
+                    middle.append(line.rstrip())
+                    continue
 
-        # # check that json loads and raise an error if it doesn't
-        # with vjf.open(mode='r') as valid_json:
-        #     data = json.load(valid_json)
+            # write the last commit to file
+            middle = ''.join(middle).rstrip(',')
+            end = end.rstrip().rstrip(',') # remove trailing comma for last object in list
+            valid_json.write(begin + middle + end)
+
+            # correct top-level bracket on last line
+            valid_json.write(']')
+
 
 def json_df_sqlite_callable():
     data_dir = Path('/root/airflow/data/')
