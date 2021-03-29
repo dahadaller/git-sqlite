@@ -10,56 +10,11 @@ from airflow.models import Variable
 
 import pandas as pd
 
-repo_urls = 'https://github.com/spotify/luigi.git,https://github.com/scala/scala.git'
-data_dir = '/root/airflow/data/'
-repos_dir = '/root/airflow/repos/'
+Variable.set("data_dir", '/root/airflow/data')
+Variable.set("repos_dir", '/root/airflow/repos')
+Variable.set("repo_urls", 'https://github.com/spotify/luigi.git,https://github.com/scala/scala.git')
 
-Variable.set("data_dir", data_dir)
-Variable.set("repos_dir", repos_dir)
-Variable.set("repo_urls", repo_urls)
-
-
-def clone_log_awk_args(arg):
-    repos = Variable.get('repo_urls').split(',')
-    repo_dirs = [r.split('/')[-1][:-4] for r in repos]
-
-    git_log = """git log --pretty=format:'{"commit": "%H", "abbreviated_commit": "%h", "name": "%aN","email": "%aE","date": "%at", "files_changed": []},' --numstat --no-merges"""
-
-    clone_log_awk_template="""
-    # clear out data directory
-    cd /root/airflow/data
-    rm -rf *.json
-    rm -rf *.csv
-    rm -rf *.db
-
-    # clear out repos
-    cd /root/airflow/repos
-    rm -rf *
-
-    # clone each repo
-    {% for repo in params.repos %}
-    git clone {{ repo }}
-    {% endfor %}
-
-    # pipe prettified "json" git log to file
-    {% for dir in params.repo_dirs %}
-    cd /root/airflow/repos/{{ dir }}
-    {{ params.git_log }} > /root/airflow/data/{{ dir }}_git_log.json
-    {% endfor %}
-
-    # process git log "json" with awk
-    {% for dir in params.repo_dirs %}
-    cat /root/airflow/data/{{ dir }}_git_log.json | awk -f /root/airflow/dags/process_log.awk > /root/airflow/data/{{ dir }}_awk.json 
-    {% endfor %}
-
-    """
-
-    if arg == 'bash_command':
-        return clone_log_awk_template
-    if arg == 'params':
-        return {'repos': repos, 'repo_dirs':repo_dirs, 'git_log':git_log}
-
-def clean_json_callable():
+def clean_awk_output_callable():
     data_dir = Path(Variable.get('data_dir'))
     awk_json_files = list(data_dir.glob('*_awk.json'))
     valid_json_files = [data_dir / (a.stem[:-4] + '_valid' + a.suffix) for a in awk_json_files]
@@ -102,7 +57,7 @@ def clean_json_callable():
             valid_json.write(']')
 
 
-def json_df_sqlite_callable():
+def export_to_sqlite_callable():
     data_dir = Path(Variable.get('data_dir'))
     valid_json_files = data_dir.glob('*_valid.json')
 
@@ -127,22 +82,73 @@ def json_df_sqlite_callable():
             files_changed.to_sql(valid_json.stem[:-6] + '_files_changed', con, if_exists="replace")
 
 
-default_args={"start_date": "2021-01-01"}
-git_log_etl = DAG('git_log_etl', default_args=default_args)
+git_log_etl = DAG(
+    'git_log_etl', 
+    default_args={"start_date": "2021-01-01"})
 
-clone_log_awk = BashOperator(task_id='clone_log_awk',
-    bash_command= clone_log_awk_args('bash_command'),
-    params=clone_log_awk_args('params'),
+clear_data_dir = BashOperator(
+    task_id = 'clear_data_dir',
+    bash_command="""
+    cd {{ var.value.data_dir }}
+    rm -rf *.json
+    rm -rf *.csv
+    rm -rf *.db
+    """,
     dag=git_log_etl)
 
-clean_json = PythonOperator(
-    task_id='clean_json',
-    python_callable=clean_json_callable,
+clear_repos_dir = BashOperator(
+    task_id='clear_repos_dir',
+    bash_command="""
+    cd {{ var.value.repos_dir }}
+    rm -rf *
+    """,
     dag=git_log_etl)
 
-json_df_sqlite = PythonOperator(
-    task_id ='json_df_sqlite',
-    python_callable=json_df_sqlite_callable,
+git_clone = BashOperator(
+    task_id='git_clone',
+    bash_command="""
+    cd {{ var.value.repos_dir }}
+    {% for repo in params.repos %}
+    git clone {{ repo }}
+    {% endfor %}
+    """,
+    params={'repos': Variable.get('repo_urls').split(',')},
     dag=git_log_etl)
 
-clone_log_awk >> clean_json >> json_df_sqlite
+git_log = BashOperator(
+    task_id='git_log',
+    bash_command= """
+    {% for repo_name in params.repo_names %}
+    cd {{ var.value.repos_dir }}/{{ repo_name }}
+    {{ params.git_log }} > {{ var.value.data_dir }}/{{ repo_name }}_git_log.json
+    {% endfor %}
+    """,
+    params={
+        'repo_names': [r.split('/')[-1][:-4] for r in Variable.get('repo_urls').split(',')],
+        'git_log': """git log --pretty=format:'{"commit": "%H", "abbreviated_commit": "%h", "name": "%aN","email": "%aE","date": "%at", "files_changed": []},' --numstat --no-merges"""
+    },
+    dag=git_log_etl)
+
+awk = BashOperator(
+    task_id='awk',
+    bash_command="""
+    {% for repo_name in params.repo_names %}
+    cat {{ var.value.data_dir }}/{{ repo_name }}_git_log.json | awk -f /root/airflow/dags/process_log.awk > {{ var.value.data_dir }}/{{ repo_name }}_awk.json 
+    {% endfor %}
+    """,
+    params={
+        'repo_names': [r.split('/')[-1][:-4] for r in Variable.get('repo_urls').split(',')]
+    },
+    dag=git_log_etl)
+
+clean_awk_output = PythonOperator(
+    task_id='clean_awk_output',
+    python_callable=clean_awk_output_callable,
+    dag=git_log_etl)
+
+export_to_sqlite = PythonOperator(
+    task_id ='export_to_sqlite',
+    python_callable=export_to_sqlite_callable,
+    dag=git_log_etl)
+
+clear_data_dir >> clear_repos_dir >> git_clone >> git_log >> awk >> clean_awk_output >> export_to_sqlite
