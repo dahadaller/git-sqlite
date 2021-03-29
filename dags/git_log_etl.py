@@ -13,7 +13,7 @@ Variable.set("data_dir", "/root/airflow/data")
 Variable.set("repos_dir", "/root/airflow/repos")
 Variable.set(
     "repo_urls",
-    "https://github.com/spotify/luigi.git,https://github.com/scala/scala.git",
+    "https://github.com/spotify/luigi.git,https://github.com/scala/scala.git,https://github.com/apache/airflow.git,https://github.com/apache/spark.git,https://github.com/apache/hive.git,https://github.com/apache/hadoop.git",
 )
 
 
