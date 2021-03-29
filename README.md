@@ -10,7 +10,7 @@
 
 ## poke around the data:
 
-You don't have to install this project to poke around the data; simply download the  `commit.db` sqlite file from the data directory of this repository, and query it with the sqlite client of your choice. For each repository specified in the Airflow Variables (more on how to set those variables in the next section), two tables are created in the `commit.db` sqlite file in the data directory of this repository. These are named with the following template: `{name of repo}_commits`   and`{name of repo}_files_changed`. Currently the pipeline includes tables for  [Luigi](https://github.com/spotify/luigi) , [Airflow](https://github.com/apache/airflow), [Hadoop](https://github.com/apache/hadoop), [Hive](https://github.com/apache/airflow), [Spark](https://github.com/apache/spark), and [Scala](https://github.com/scala/scala).  Let us take the tables created for the Luigi project:
+You don't have to run the data pipeline to poke around the data; simply download the  `commit.db` sqlite file from the data directory of this repository, and query it with the sqlite client of your choice. For each repository specified in the Airflow Variables (more on how to set those variables in the next section), two tables are created in `commit.db` per repository. These are named with the following template: `{name of repo}_commits` and `{name of repo}_files_changed`. Currently the pipeline includes tables for  [Luigi](https://github.com/spotify/luigi) and [Scala](https://github.com/scala/scala), however other repositories can be added by changing the `repo_urls` Airflow Variable.  Let us take the tables created for the Luigi project:
 
 - **luigi_commits**: a table that, for each commit, has the following columns
     - **commit**: the full commit hash
@@ -99,10 +99,3 @@ For more information on the make directives, refer to the [Airflow Repo Template
 The initial strategy for acquiring this data was to simply query the GitHub API. However, the API had serious performance limitations. To find all files associated with a given commit using the API, you first have to retrieve a list of commits from the repository endpoint (eg. `https://api.github.com/repos/scala/scala/commits`) and then for each commit, you had to use the SHA to query yet another enpoint for all the committed files (`https://api.github.com/repos/scala/scala/commits/{commit_sha}`). This meant, for each repository, one request had to be made for each commit in that repository's commit log. As of this writing, the 2.13.x branch of the scala repo has 36,665 commits. Performing a full load of the commit data from just that one repository would exhaust my  5,000 request-per-hour limit almost immediately. 
 
 With the performance limitations of the Github REST API (the GraphQL API was no better here) I resorted to programatically downloading each repository and processing each one's `git log` output.
-
-
-
-The response of this second query is limited to 300 files, so 
-
-
-
