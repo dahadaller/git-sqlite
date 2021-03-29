@@ -1,6 +1,6 @@
 # *gitlog → sqlite* data pipeline
 
-*gitlog → sqlite* is a data pipeline that clones github repositories, then transforms their git log outputs into tables in an sqlite database. The *gitlog → sqlite* pipeline is run by a DAG ,`git_log_etl` (shown in image below),  that is executed on a dockerized, single-node Airflow installation based on this [template](https://github.com/soggycactus/airflow-repo-template). All data (json files, sqlite, csv, etc) are placed in the *data* directory of this repository after the DAG has finished running. 
+*gitlog → sqlite* is a data pipeline that pulls .git directories from repositories, then transforms git log outputs into queryable tables in an sqlite database. The *gitlog → sqlite* pipeline is run by a DAG ,`git_log_etl` (shown in image below),  that is executed on a dockerized, single-node Airflow installation based on this [template](https://github.com/soggycactus/airflow-repo-template). All data (json files, sqlite, csv, etc) are placed in the *data* directory of this repository after the DAG has finished running. 
 
 
 
